@@ -42,9 +42,9 @@
 #include "wine/exception.h"
 
 #include "rpc_server.h"
-#include "rpc_misc.h"
 #include "rpc_message.h"
 #include "rpc_defs.h"
+#include "ncastatus.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(rpc);
 
@@ -170,6 +170,7 @@ static void RPCRT4_process_packet(RpcConnection* conn, RpcPktHdr* hdr, RPC_MESSA
   RpcPktHdr *response;
   void *buf = msg->Buffer;
   RPC_STATUS status;
+  BOOL exception;
 
   switch (hdr->common.ptype) {
     case PKT_BIND:
@@ -219,6 +220,7 @@ static void RPCRT4_process_packet(RpcConnection* conn, RpcPktHdr* hdr, RPC_MESSA
 
       /* fail if the connection isn't bound with an interface */
       if (UuidIsNil(&conn->ActiveInterface.SyntaxGUID, &status)) {
+        /* FIXME: should send BindNack instead */
         response = RPCRT4_BuildFaultHeader(NDR_LOCAL_DATA_REPRESENTATION,
                                            status);
 
@@ -235,7 +237,12 @@ static void RPCRT4_process_packet(RpcConnection* conn, RpcPktHdr* hdr, RPC_MESSA
 
       sif = RPCRT4_find_interface(object_uuid, &conn->ActiveInterface, TRUE);
       if (!sif) {
-        /* FIXME: send fault packet? */
+        WARN("interface %s no longer registered, returning fault packet\n", debugstr_guid(&conn->ActiveInterface.SyntaxGUID));
+        response = RPCRT4_BuildFaultHeader(NDR_LOCAL_DATA_REPRESENTATION,
+                                           NCA_S_UNK_IF);
+
+        RPCRT4_Send(conn, response, NULL, 0);
+        RPCRT4_FreeHeader(response);
         break;
       }
       msg->RpcInterfaceInformation = sif->If;
@@ -253,8 +260,12 @@ static void RPCRT4_process_packet(RpcConnection* conn, RpcPktHdr* hdr, RPC_MESSA
         func = *sif->If->DispatchTable->DispatchTable;
       } else {
         if (msg->ProcNum >= sif->If->DispatchTable->DispatchTableCount) {
-          ERR("invalid procnum\n");
-          func = NULL;
+          WARN("invalid procnum (%d/%d)\n", msg->ProcNum, sif->If->DispatchTable->DispatchTableCount);
+          response = RPCRT4_BuildFaultHeader(NDR_LOCAL_DATA_REPRESENTATION,
+                                             NCA_S_OP_RNG_ERROR);
+
+          RPCRT4_Send(conn, response, NULL, 0);
+          RPCRT4_FreeHeader(response);
         }
         func = sif->If->DispatchTable->DispatchTable[msg->ProcNum];
       }
@@ -265,20 +276,32 @@ static void RPCRT4_process_packet(RpcConnection* conn, RpcPktHdr* hdr, RPC_MESSA
         MAKELONG( MAKEWORD(hdr->common.drep[0], hdr->common.drep[1]),
                   MAKEWORD(hdr->common.drep[2], hdr->common.drep[3]));
 
+      exception = FALSE;
+
       /* dispatch */
       __TRY {
         if (func) func(msg);
       } __EXCEPT(rpc_filter) {
-        if (msg->Buffer != buf) I_RpcFreeBuffer(msg);
-        /* this will cause a failure packet to be sent in I_RpcSend */
-        msg->RpcFlags |= WINE_RPCFLAG_EXCEPTION;
-        msg->BufferLength = sizeof(DWORD);
-        I_RpcGetBuffer(msg);
-        *(DWORD*)msg->Buffer = GetExceptionCode();
+        exception = TRUE;
+        if (GetExceptionCode() == STATUS_ACCESS_VIOLATION)
+            status = ERROR_NOACCESS;
+        else
+            status = GetExceptionCode();
+        response = RPCRT4_BuildFaultHeader(msg->DataRepresentation,
+                                           RPC2NCA_STATUS(status));
       } __ENDTRY
 
+      if (!exception)
+        response = RPCRT4_BuildResponseHeader(msg->DataRepresentation,
+                                              msg->BufferLength);
+
       /* send response packet */
-      I_RpcSend(msg);
+      if (response) {
+        status = RPCRT4_Send(conn, response, exception ? NULL : msg->Buffer,
+                             exception ? 0 : msg->BufferLength);
+        RPCRT4_FreeHeader(response);
+      } else
+        ERR("out of memory\n");
 
       msg->RpcInterfaceInformation = NULL;
       RPCRT4_release_server_interface(sif);

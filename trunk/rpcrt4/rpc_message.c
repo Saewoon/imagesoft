@@ -35,9 +35,9 @@
 #include "wine/debug.h"
 
 #include "rpc_binding.h"
-#include "rpc_misc.h"
 #include "rpc_defs.h"
 #include "rpc_message.h"
+#include "ncastatus.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(rpc);
 
@@ -140,7 +140,7 @@ static RpcPktHdr *RPCRT4_BuildRequestHeader(unsigned long DataRepresentation,
   return header;
 }
 
-static RpcPktHdr *RPCRT4_BuildResponseHeader(unsigned long DataRepresentation,
+RpcPktHdr *RPCRT4_BuildResponseHeader(unsigned long DataRepresentation,
                                       unsigned long BufferLength)
 {
   RpcPktHdr *header;
@@ -177,8 +177,9 @@ RpcPktHdr *RPCRT4_BuildFaultHeader(unsigned long DataRepresentation,
 RpcPktHdr *RPCRT4_BuildBindHeader(unsigned long DataRepresentation,
                                   unsigned short MaxTransmissionSize,
                                   unsigned short MaxReceiveSize,
-                                  RPC_SYNTAX_IDENTIFIER *AbstractId,
-                                  RPC_SYNTAX_IDENTIFIER *TransferId)
+                                  unsigned long  AssocGroupId,
+                                  const RPC_SYNTAX_IDENTIFIER *AbstractId,
+                                  const RPC_SYNTAX_IDENTIFIER *TransferId)
 {
   RpcPktHdr *header;
 
@@ -191,6 +192,7 @@ RpcPktHdr *RPCRT4_BuildBindHeader(unsigned long DataRepresentation,
   header->common.frag_len = sizeof(header->bind);
   header->bind.max_tsize = MaxTransmissionSize;
   header->bind.max_rsize = MaxReceiveSize;
+  header->bind.assoc_gid = AssocGroupId;
   header->bind.num_elements = 1;
   header->bind.num_syntaxes = 1;
   memcpy(&header->bind.abstract, AbstractId, sizeof(RPC_SYNTAX_IDENTIFIER));
@@ -238,10 +240,10 @@ RpcPktHdr *RPCRT4_BuildBindNackHeader(unsigned long DataRepresentation,
 RpcPktHdr *RPCRT4_BuildBindAckHeader(unsigned long DataRepresentation,
                                      unsigned short MaxTransmissionSize,
                                      unsigned short MaxReceiveSize,
-                                     LPSTR ServerAddress,
+                                     LPCSTR ServerAddress,
                                      unsigned long Result,
                                      unsigned long Reason,
-                                     RPC_SYNTAX_IDENTIFIER *TransferId)
+                                     const RPC_SYNTAX_IDENTIFIER *TransferId)
 {
   RpcPktHdr *header;
   unsigned long header_size;
@@ -280,6 +282,74 @@ RpcPktHdr *RPCRT4_BuildBindAckHeader(unsigned long DataRepresentation,
 VOID RPCRT4_FreeHeader(RpcPktHdr *Header)
 {
   HeapFree(GetProcessHeap(), 0, Header);
+}
+
+NCA_STATUS RPC2NCA_STATUS(RPC_STATUS status)
+{
+    switch (status)
+    {
+    case ERROR_INVALID_HANDLE:              return NCA_S_FAULT_CONTEXT_MISMATCH;
+    case ERROR_OUTOFMEMORY:                 return NCA_S_FAULT_REMOTE_NO_MEMORY;
+    case RPC_S_NOT_LISTENING:               return NCA_S_SERVER_TOO_BUSY;
+    case RPC_S_UNKNOWN_IF:                  return NCA_S_UNK_IF;
+    case RPC_S_SERVER_TOO_BUSY:             return NCA_S_SERVER_TOO_BUSY;
+    case RPC_S_CALL_FAILED:                 return NCA_S_FAULT_UNSPEC;
+    case RPC_S_CALL_FAILED_DNE:             return NCA_S_MANAGER_NOT_ENTERED;
+    case RPC_S_PROTOCOL_ERROR:              return NCA_S_PROTO_ERROR;
+    case RPC_S_UNSUPPORTED_TYPE:            return NCA_S_UNSUPPORTED_TYPE;
+    case RPC_S_INVALID_TAG:                 return NCA_S_FAULT_INVALID_TAG;
+    case RPC_S_INVALID_BOUND:               return NCA_S_FAULT_INVALID_BOUND;
+    case RPC_S_PROCNUM_OUT_OF_RANGE:        return NCA_S_OP_RNG_ERROR;
+    case RPC_X_SS_HANDLES_MISMATCH:         return NCA_S_FAULT_CONTEXT_MISMATCH;
+    case STATUS_FLOAT_DIVIDE_BY_ZERO:       return NCA_S_FAULT_FP_DIV_ZERO;
+    case STATUS_FLOAT_INVALID_OPERATION:    return NCA_S_FAULT_FP_ERROR;
+    case STATUS_FLOAT_OVERFLOW:             return NCA_S_FAULT_FP_OVERFLOW;
+    case STATUS_FLOAT_UNDERFLOW:            return NCA_S_FAULT_FP_UNDERFLOW;
+    case STATUS_INTEGER_DIVIDE_BY_ZERO:     return NCA_S_FAULT_INT_DIV_BY_ZERO;
+    case STATUS_INTEGER_OVERFLOW:           return NCA_S_FAULT_INT_OVERFLOW;
+    default:                                return status;
+    }
+}
+
+RPC_STATUS NCA2RPC_STATUS(NCA_STATUS status)
+{
+    switch (status)
+    {
+    case NCA_S_COMM_FAILURE:            return RPC_S_COMM_FAILURE;
+    case NCA_S_OP_RNG_ERROR:            return RPC_S_PROCNUM_OUT_OF_RANGE;
+    case NCA_S_UNK_IF:                  return RPC_S_UNKNOWN_IF;
+    case NCA_S_YOU_CRASHED:             return RPC_S_CALL_FAILED;
+    case NCA_S_PROTO_ERROR:             return RPC_S_PROTOCOL_ERROR;
+    case NCA_S_OUT_ARGS_TOO_BIG:        return ERROR_NOT_ENOUGH_SERVER_MEMORY;
+    case NCA_S_SERVER_TOO_BUSY:         return RPC_S_SERVER_TOO_BUSY;
+    case NCA_S_UNSUPPORTED_TYPE:        return RPC_S_UNSUPPORTED_TYPE;
+    case NCA_S_FAULT_INT_DIV_BY_ZERO:   return RPC_S_ZERO_DIVIDE;
+    case NCA_S_FAULT_ADDR_ERROR:        return RPC_S_ADDRESS_ERROR;
+    case NCA_S_FAULT_FP_DIV_ZERO:       return RPC_S_FP_DIV_ZERO;
+    case NCA_S_FAULT_FP_UNDERFLOW:      return RPC_S_FP_UNDERFLOW;
+    case NCA_S_FAULT_FP_OVERFLOW:       return RPC_S_FP_OVERFLOW;
+    case NCA_S_FAULT_INVALID_TAG:       return RPC_S_INVALID_TAG;
+    case NCA_S_FAULT_INVALID_BOUND:     return RPC_S_INVALID_BOUND;
+    case NCA_S_RPC_VERSION_MISMATCH:    return RPC_S_PROTOCOL_ERROR;
+    case NCA_S_UNSPEC_REJECT:           return RPC_S_CALL_FAILED_DNE;
+    case NCA_S_BAD_ACTID:               return RPC_S_CALL_FAILED_DNE;
+    case NCA_S_WHO_ARE_YOU_FAILED:      return RPC_S_CALL_FAILED;
+    case NCA_S_MANAGER_NOT_ENTERED:     return RPC_S_CALL_FAILED_DNE;
+    case NCA_S_FAULT_CANCEL:            return RPC_S_CALL_CANCELLED;
+    case NCA_S_FAULT_ILL_INST:          return RPC_S_ADDRESS_ERROR;
+    case NCA_S_FAULT_FP_ERROR:          return RPC_S_FP_OVERFLOW;
+    case NCA_S_FAULT_INT_OVERFLOW:      return RPC_S_ADDRESS_ERROR;
+    case NCA_S_FAULT_UNSPEC:            return RPC_S_CALL_FAILED;
+    case NCA_S_FAULT_PIPE_EMPTY:        return RPC_X_PIPE_EMPTY;
+    case NCA_S_FAULT_PIPE_CLOSED:       return RPC_X_PIPE_CLOSED;
+    case NCA_S_FAULT_PIPE_ORDER:        return RPC_X_WRONG_PIPE_ORDER;
+    case NCA_S_FAULT_PIPE_DISCIPLINE:   return RPC_X_PIPE_DISCIPLINE_ERROR;
+    case NCA_S_FAULT_PIPE_COMM_ERROR:   return RPC_S_COMM_FAILURE;
+    case NCA_S_FAULT_PIPE_MEMORY:       return ERROR_OUTOFMEMORY;
+    case NCA_S_FAULT_CONTEXT_MISMATCH:  return ERROR_INVALID_HANDLE;
+    case NCA_S_FAULT_REMOTE_NO_MEMORY:  return ERROR_NOT_ENOUGH_SERVER_MEMORY;
+    default:                            return status;
+    }
 }
 
 static RPC_STATUS RPCRT4_SecurePacket(RpcConnection *Connection,
@@ -893,63 +963,60 @@ RPC_STATUS WINAPI I_RpcSend(PRPC_MESSAGE pMsg)
   RpcBinding* bind = (RpcBinding*)pMsg->Handle;
   RpcConnection* conn;
   RPC_CLIENT_INTERFACE* cif = NULL;
-  RPC_SERVER_INTERFACE* sif = NULL;
   RPC_STATUS status;
   RpcPktHdr *hdr;
 
   TRACE("(%p)\n", pMsg);
-  if (!bind) return RPC_S_INVALID_BINDING;
+  if (!bind || bind->server) return RPC_S_INVALID_BINDING;
 
-  if (bind->server) {
-    sif = pMsg->RpcInterfaceInformation;
-    if (!sif) return RPC_S_INTERFACE_NOT_FOUND; /* ? */
-    status = RPCRT4_OpenBinding(bind, &conn, &sif->TransferSyntax,
-                                &sif->InterfaceId);
-  } else {
-    cif = pMsg->RpcInterfaceInformation;
-    if (!cif) return RPC_S_INTERFACE_NOT_FOUND; /* ? */
+  cif = pMsg->RpcInterfaceInformation;
+  if (!cif) return RPC_S_INTERFACE_NOT_FOUND; /* ? */
 
-    if (!bind->Endpoint || !bind->Endpoint[0])
-    {
-      TRACE("automatically resolving partially bound binding\n");
-      status = RpcEpResolveBinding(bind, cif);
-      if (status != RPC_S_OK) return status;
-    }
-
-    status = RPCRT4_OpenBinding(bind, &conn, &cif->TransferSyntax,
-                                &cif->InterfaceId);
+  if (!bind->Endpoint || !bind->Endpoint[0])
+  {
+    TRACE("automatically resolving partially bound binding\n");
+    status = RpcEpResolveBinding(bind, cif);
+    if (status != RPC_S_OK) return status;
   }
 
+  status = RPCRT4_OpenBinding(bind, &conn, &cif->TransferSyntax,
+                              &cif->InterfaceId);
   if (status != RPC_S_OK) return status;
 
-  if (bind->server) {
-    if (pMsg->RpcFlags & WINE_RPCFLAG_EXCEPTION) {
-      hdr = RPCRT4_BuildFaultHeader(pMsg->DataRepresentation,
-                                    RPC_S_CALL_FAILED);
-    } else {
-      hdr = RPCRT4_BuildResponseHeader(pMsg->DataRepresentation,
-                                       pMsg->BufferLength);
-    }
-  } else {
-    hdr = RPCRT4_BuildRequestHeader(pMsg->DataRepresentation,
-                                    pMsg->BufferLength, pMsg->ProcNum,
-                                    &bind->ObjectUuid);
-    hdr->common.call_id = conn->NextCallId++;
+  hdr = RPCRT4_BuildRequestHeader(pMsg->DataRepresentation,
+                                  pMsg->BufferLength, pMsg->ProcNum,
+                                  &bind->ObjectUuid);
+  if (!hdr)
+  {
+    RPCRT4_CloseBinding(bind, conn);
+    return ERROR_OUTOFMEMORY;
   }
+  hdr->common.call_id = conn->NextCallId++;
 
   status = RPCRT4_Send(conn, hdr, pMsg->Buffer, pMsg->BufferLength);
 
   RPCRT4_FreeHeader(hdr);
 
-  /* success */
-  if (!bind->server) {
-    /* save the connection, so the response can be read from it */
-    pMsg->ReservedForRuntime = conn;
-    return status;
-  }
-  RPCRT4_CloseBinding(bind, conn);
-
+  /* save the connection, so the response can be read from it */
+  pMsg->ReservedForRuntime = conn;
   return status;
+}
+
+/* is this status something that the server can't recover from? */
+static inline BOOL is_hard_error(RPC_STATUS status)
+{
+    switch (status)
+    {
+    case 0: /* user-defined fault */
+    case ERROR_ACCESS_DENIED:
+    case ERROR_INVALID_PARAMETER:
+    case RPC_S_PROTOCOL_ERROR:
+    case RPC_S_CALL_FAILED:
+    case RPC_S_CALL_FAILED_DNE:
+        return TRUE;
+    default:
+        return FALSE;
+    }
 }
 
 /***********************************************************************
@@ -999,31 +1066,39 @@ RPC_STATUS WINAPI I_RpcReceive(PRPC_MESSAGE pMsg)
     goto fail;
   }
 
-  status = RPC_S_PROTOCOL_ERROR;
-
   switch (hdr->common.ptype) {
   case PKT_RESPONSE:
-    if (bind->server) goto fail;
+    if (bind->server) {
+        status = RPC_S_PROTOCOL_ERROR;
+        goto fail;
+    }
     break;
   case PKT_REQUEST:
-    if (!bind->server) goto fail;
+    if (!bind->server) {
+        status = RPC_S_PROTOCOL_ERROR;
+        goto fail;
+    }
     break;
   case PKT_FAULT:
-    pMsg->RpcFlags |= WINE_RPCFLAG_EXCEPTION;
     ERR ("we got fault packet with status 0x%lx\n", hdr->fault.status);
-    status = hdr->fault.status; /* FIXME: do translation from nca error codes */
-    goto fail;
+    status = NCA2RPC_STATUS(hdr->fault.status);
+    if (is_hard_error(status))
+        goto fail;
+    break;
   default:
     WARN("bad packet type %d\n", hdr->common.ptype);
+    status = RPC_S_PROTOCOL_ERROR;
     goto fail;
   }
 
   /* success */
-  status = RPC_S_OK;
+  RPCRT4_CloseBinding(bind, conn);
+  RPCRT4_FreeHeader(hdr);
+  return status;
 
 fail:
   RPCRT4_FreeHeader(hdr);
-  RPCRT4_CloseBinding(bind, conn);
+  RPCRT4_DestroyConnection(conn);
   return status;
 }
 
