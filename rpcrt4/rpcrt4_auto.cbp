@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="5" />
+	<Project>
+		<Option title="rpcrt4" />
+		<Option pch_mode="2" />
+		<Option default_target="" />
+		<Option compiler="gcc" />
+		<Option virtualFolders="" />
+		<Build>
+			<Target title="Debug">
+				<Option output="..\..\..\output-i386\dll\win32\rpcrt4\rpcrt4.dll" prefix_auto="0" extension_auto="0" />
+				<Option object_output="..\..\..\obj-i386\dll\win32\rpcrt4" />
+				<Option type="3" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-g" />
+					<Add option="-Wall" />
+					<Add option="-fno-optimize-sibling-calls" />
+					<Add option="-Wpointer-arith" />
+					<Add option="-Os" />
+					<Add option="-Wno-strict-aliasing" />
+					<Add option="-ftracer" />
+					<Add option="-momit-leaf-frame-pointer" />
+					<Add option="-mpreferred-stack-boundary=2" />
+					<Add option="-D__REACTOS__" />
+					<Add option="-D__USE_W32API" />
+					<Add option="-D_WIN32_IE=0x600" />
+					<Add option="-D_WIN32_WINNT=0x501" />
+					<Add option="-DWINVER=0x501" />
+					<Add option="-D_STDDEF_H" />
+					<Add option="-D_RPCRT4_" />
+					<Add option="-DCOM_NO_WINDOWS_H" />
+					<Add option="-DMSWMSG" />
+					<Add option="-D_M_IX86" />
+					<Add option="-D_X86_" />
+					<Add option="-D__i386__" />
+					<Add option="-D_REACTOS_" />
+					<Add option="-DDBG" />
+					<Add directory="." />
+					<Add directory="../../../include/reactos/wine" />
+					<Add directory="../../../." />
+					<Add directory="../../../include" />
+					<Add directory="../../../include/psdk" />
+					<Add directory="../../../include/crt" />
+					<Add directory="../../../include/ddk" />
+					<Add directory="../../../include/GL" />
+					<Add directory="../../../include/ndk" />
+					<Add directory="../../../include/reactos" />
+					<Add directory="../../../include/reactos/libs" />
+				</Compiler>
+				<ResourceCompiler>
+					<Add directory="." />
+					<Add directory="../../../include/reactos/wine" />
+					<Add directory="../../../." />
+					<Add directory="../../../include" />
+					<Add directory="../../../include/psdk" />
+					<Add directory="../../../include/crt" />
+					<Add directory="../../../include/ddk" />
+					<Add directory="../../../include/GL" />
+					<Add directory="../../../include/ndk" />
+					<Add directory="../../../include/reactos" />
+					<Add directory="../../../include/reactos/libs" />
+				</ResourceCompiler>
+				<Linker>
+					<Add option="-Wl,--enable-stdcall-fixup " />
+					<Add option="-Wl,--entry,_DllMain@12" />
+					<Add option="-Wl,--image-base,0x76000000" />
+					<Add option="-Wl,--shared" />
+					<Add option="-nostartfiles -Wl,--nostdlib" />
+					<Add library="gcc" />
+					<Add option="-Wl,--file-alignment,0x1000" />
+					<Add option="-Wl,--section-alignment,0x1000" />
+					<Add option="rpcrt4.temp.exp" />
+					<Add library="wine" />
+					<Add library="mingw_common" />
+					<Add library="uuid" />
+					<Add library="ntdll" />
+					<Add library="kernel32" />
+					<Add library="advapi32" />
+					<Add library="iphlpapi" />
+					<Add library="msvcrt" />
+					<Add directory="..\..\..\obj-i386\lib\libwine" />
+					<Add directory="..\..\..\obj-i386\lib\mingw" />
+					<Add directory="..\..\..\obj-i386\lib\uuid" />
+					<Add directory="..\..\..\obj-i386\dll\ntdll" />
+					<Add directory="..\..\..\obj-i386\dll\win32\kernel32" />
+					<Add directory="..\..\..\obj-i386\dll\win32\advapi32" />
+					<Add directory="..\..\..\obj-i386\dll\win32\iphlpapi" />
+					<Add directory="..\..\..\obj-i386\dll\win32\msvcrt" />
+				</Linker>
+				<ExtraCommands>
+					<Add after="dlltool --dllname rpcrt4.dll --def rpcrt4.spec.def --output-lib &quot;..\..\..\obj-i386\dll\win32\rpcrt4\lib$(TARGET_OUTPUT_BASENAME).a&quot; --kill-at" />
+					<Add before="dlltool --dllname rpcrt4.dll --def rpcrt4.spec.def --output-exp rpcrt4.temp.exp --kill-at" />
+					<Add after="..\..\..\output-i386\tools\pefixup $exe_output -exports" />
+					<Add after="cmd /c del rpcrt4.temp.exp 2&gt;NUL" />
+					<Mode after="always" />
+				</ExtraCommands>
+			</Target>
+			<Target title="Release">
+				<Option output="..\..\..\output-i386\dll\win32\rpcrt4\rpcrt4.dll" prefix_auto="0" extension_auto="0" />
+				<Option object_output="..\..\..\obj-i386\dll\win32\rpcrt4" />
+				<Option type="3" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-fno-optimize-sibling-calls" />
+					<Add option="-Wpointer-arith" />
+					<Add option="-Os" />
+					<Add option="-Wno-strict-aliasing" />
+					<Add option="-ftracer" />
+					<Add option="-momit-leaf-frame-pointer" />
+					<Add option="-mpreferred-stack-boundary=2" />
+					<Add option="-D__REACTOS__" />
+					<Add option="-D__USE_W32API" />
+					<Add option="-D_WIN32_IE=0x600" />
+					<Add option="-D_WIN32_WINNT=0x501" />
+					<Add option="-DWINVER=0x501" />
+					<Add option="-D_STDDEF_H" />
+					<Add option="-D_RPCRT4_" />
+					<Add option="-DCOM_NO_WINDOWS_H" />
+					<Add option="-DMSWMSG" />
+					<Add option="-D_M_IX86" />
+					<Add option="-D_X86_" />
+					<Add option="-D__i386__" />
+					<Add option="-D_REACTOS_" />
+					<Add option="-DDBG" />
+					<Add directory="." />
+					<Add directory="../../../include/reactos/wine" />
+					<Add directory="../../../." />
+					<Add directory="../../../include" />
+					<Add directory="../../../include/psdk" />
+					<Add directory="../../../include/crt" />
+					<Add directory="../../../include/ddk" />
+					<Add directory="../../../include/GL" />
+					<Add directory="../../../include/ndk" />
+					<Add directory="../../../include/reactos" />
+					<Add directory="../../../include/reactos/libs" />
+				</Compiler>
+				<ResourceCompiler>
+					<Add directory="." />
+					<Add directory="../../../include/reactos/wine" />
+					<Add directory="../../../." />
+					<Add directory="../../../include" />
+					<Add directory="../../../include/psdk" />
+					<Add directory="../../../include/crt" />
+					<Add directory="../../../include/ddk" />
+					<Add directory="../../../include/GL" />
+					<Add directory="../../../include/ndk" />
+					<Add directory="../../../include/reactos" />
+					<Add directory="../../../include/reactos/libs" />
+				</ResourceCompiler>
+				<Linker>
+					<Add option="-Wl,--enable-stdcall-fixup " />
+					<Add option="-Wl,--entry,_DllMain@12" />
+					<Add option="-Wl,--image-base,0x76000000" />
+					<Add option="-Wl,--shared" />
+					<Add option="-nostartfiles -Wl,--nostdlib" />
+					<Add library="gcc" />
+					<Add option="-Wl,--file-alignment,0x1000" />
+					<Add option="-Wl,--section-alignment,0x1000" />
+					<Add option="rpcrt4.temp.exp" />
+					<Add library="wine" />
+					<Add library="mingw_common" />
+					<Add library="uuid" />
+					<Add library="ntdll" />
+					<Add library="kernel32" />
+					<Add library="advapi32" />
+					<Add library="iphlpapi" />
+					<Add library="msvcrt" />
+					<Add directory="..\..\..\obj-i386\lib\libwine" />
+					<Add directory="..\..\..\obj-i386\lib\mingw" />
+					<Add directory="..\..\..\obj-i386\lib\uuid" />
+					<Add directory="..\..\..\obj-i386\dll\ntdll" />
+					<Add directory="..\..\..\obj-i386\dll\win32\kernel32" />
+					<Add directory="..\..\..\obj-i386\dll\win32\advapi32" />
+					<Add directory="..\..\..\obj-i386\dll\win32\iphlpapi" />
+					<Add directory="..\..\..\obj-i386\dll\win32\msvcrt" />
+				</Linker>
+				<ExtraCommands>
+					<Add after="dlltool --dllname rpcrt4.dll --def rpcrt4.spec.def --output-lib &quot;..\..\..\obj-i386\dll\win32\rpcrt4\lib$(TARGET_OUTPUT_BASENAME).a&quot; --kill-at" />
+					<Add before="dlltool --dllname rpcrt4.dll --def rpcrt4.spec.def --output-exp rpcrt4.temp.exp --kill-at" />
+					<Add after="..\..\..\output-i386\tools\pefixup $exe_output -exports" />
+					<Add after="cmd /c del rpcrt4.temp.exp 2&gt;NUL" />
+					<Mode after="always" />
+				</ExtraCommands>
+			</Target>
+		</Build>
+		<Unit filename=".\cproxy.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\cpsf.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\cstub.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\ndr_marshall.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\ndr_midl.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\ndr_ole.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\ndr_stubless.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\rpc_binding.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\rpc_epmap.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\rpc_message.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\rpc_server.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\ndr_contexth.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\rpcrt4_main.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\rpcss_np_client.c">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\rpcrt4.spec">
+			<Option compilerVar="CC" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Unit filename=".\rpcrt4.rc">
+			<Option compilerVar="WINDRES" />
+			<Option compiler="gcc" use="1" buildCommand="gcc -xc -E -DRC_INVOKED $includes -D__REACTOS__ -D__USE_W32API -D_WIN32_IE=0x600 -D_WIN32_WINNT=0x501 -DWINVER=0x501 -D_STDDEF_H -D_RPCRT4_ -DCOM_NO_WINDOWS_H -DMSWMSG -D_M_IX86 -D_X86_ -D__i386__ -D_REACTOS_ -DDBG  $file -o kernel32.kernel32.rci.tmp\n..\..\..\output-i386\tools\wrc\wrc.exe $includes -D__REACTOS__ -D__USE_W32API -D_WIN32_IE=0x600 -D_WIN32_WINNT=0x501 -DWINVER=0x501 -D_STDDEF_H -D_RPCRT4_ -DCOM_NO_WINDOWS_H -DMSWMSG -D_M_IX86 -D_X86_ -D__i386__ -D_REACTOS_ -DDBG  kernel32.kernel32.rci.tmp kernel32.kernel32.res.tmp\n$rescomp --output-format=coff kernel32.kernel32.res.tmp -o $resource_output" />
+			<Option target="Debug" />
+			<Option target="Release" />
+		</Unit>
+		<Extensions />
+	</Project>
+</CodeBlocks_project_file>
