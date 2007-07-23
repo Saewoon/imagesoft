@@ -35,6 +35,11 @@ typedef struct _RpcAuthInfo
   CredHandle cred;
   TimeStamp exp;
   ULONG cbMaxToken;
+  /* the auth identity pointer that the application passed us (freed by application) */
+  RPC_AUTH_IDENTITY_HANDLE *identity;
+  /* our copy of NT auth identity structure, if the authentication service
+   * takes an NT auth identity */
+  SEC_WINNT_AUTH_IDENTITY_W *nt_identity;
 } RpcAuthInfo;
 
 typedef struct _RpcQualityOfService
@@ -53,7 +58,9 @@ typedef struct _RpcAssoc
     LPSTR NetworkAddr;
     LPSTR Endpoint;
     LPWSTR NetworkOptions;
-    RpcAuthInfo *AuthInfo;
+
+    /* id of this association group */
+    ULONG assoc_group_id;
 
     CRITICAL_SECTION cs;
     struct list connection_pool;
@@ -64,7 +71,6 @@ struct connection_ops;
 typedef struct _RpcConnection
 {
   struct _RpcConnection* Next;
-  struct _RpcBinding* Used;
   BOOL server;
   LPSTR NetworkAddr;
   LPSTR Endpoint;
@@ -86,6 +92,7 @@ typedef struct _RpcConnection
 
   /* client-only */
   struct list conn_pool_entry;
+  ULONG assoc_group_id; /* association group returned during binding */
 } RpcConnection;
 
 struct connection_ops {
@@ -133,15 +140,17 @@ void RPCRT4_strfree(LPSTR src);
 
 ULONG RpcAuthInfo_AddRef(RpcAuthInfo *AuthInfo);
 ULONG RpcAuthInfo_Release(RpcAuthInfo *AuthInfo);
+BOOL RpcAuthInfo_IsEqual(const RpcAuthInfo *AuthInfo1, const RpcAuthInfo *AuthInfo2);
 ULONG RpcQualityOfService_AddRef(RpcQualityOfService *qos);
 ULONG RpcQualityOfService_Release(RpcQualityOfService *qos);
+BOOL RpcQualityOfService_IsEqual(const RpcQualityOfService *qos1, const RpcQualityOfService *qos2);
 
 RPC_STATUS RPCRT4_GetAssociation(LPCSTR Protseq, LPCSTR NetworkAddr, LPCSTR Endpoint, LPCWSTR NetworkOptions, RpcAssoc **assoc);
-RpcConnection *RpcAssoc_GetIdleConnection(RpcAssoc *assoc, const RPC_SYNTAX_IDENTIFIER *InterfaceId, const RPC_SYNTAX_IDENTIFIER *TransferSyntax, const RpcAuthInfo *AuthInfo, const RpcQualityOfService *QOS);
+RPC_STATUS RpcAssoc_GetClientConnection(RpcAssoc *assoc, const RPC_SYNTAX_IDENTIFIER *InterfaceId, const RPC_SYNTAX_IDENTIFIER *TransferSyntax, RpcAuthInfo *AuthInfo, RpcQualityOfService *QOS, RpcConnection **Connection);
 void RpcAssoc_ReleaseIdleConnection(RpcAssoc *assoc, RpcConnection *Connection);
 ULONG RpcAssoc_Release(RpcAssoc *assoc);
 
-RPC_STATUS RPCRT4_CreateConnection(RpcConnection** Connection, BOOL server, LPCSTR Protseq, LPCSTR NetworkAddr, LPCSTR Endpoint, LPCWSTR NetworkOptions, RpcAuthInfo* AuthInfo, RpcQualityOfService *QOS, RpcBinding* Binding);
+RPC_STATUS RPCRT4_CreateConnection(RpcConnection** Connection, BOOL server, LPCSTR Protseq, LPCSTR NetworkAddr, LPCSTR Endpoint, LPCWSTR NetworkOptions, RpcAuthInfo* AuthInfo, RpcQualityOfService *QOS);
 RPC_STATUS RPCRT4_DestroyConnection(RpcConnection* Connection);
 RPC_STATUS RPCRT4_OpenClientConnection(RpcConnection* Connection);
 RPC_STATUS RPCRT4_CloseConnection(RpcConnection* Connection);

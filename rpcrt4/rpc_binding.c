@@ -78,6 +78,17 @@ LPWSTR RPCRT4_strdupAtoW(LPCSTR src)
   return s;
 }
 
+static LPWSTR RPCRT4_strndupAtoW(LPCSTR src, INT slen)
+{
+  DWORD len;
+  LPWSTR s;
+  if (!src) return NULL;
+  len = MultiByteToWideChar(CP_ACP, 0, src, slen, NULL, 0);
+  s = HeapAlloc(GetProcessHeap(), 0, len*sizeof(WCHAR));
+  MultiByteToWideChar(CP_ACP, 0, src, slen, s, len);
+  return s;
+}
+
 LPWSTR RPCRT4_strndupW(LPCWSTR src, INT slen)
 {
   DWORD len;
@@ -266,91 +277,21 @@ RPC_STATUS RPCRT4_OpenBinding(RpcBinding* Binding, RpcConnection** Connection,
                               PRPC_SYNTAX_IDENTIFIER TransferSyntax,
                               PRPC_SYNTAX_IDENTIFIER InterfaceId)
 {
-  RpcConnection* NewConnection;
-  RPC_STATUS status;
-
   TRACE("(Binding == ^%p)\n", Binding);
 
   if (!Binding->server) {
-    /* try to find a compatible connection from the connection pool */
-    NewConnection = RpcAssoc_GetIdleConnection(Binding->Assoc, InterfaceId,
-        TransferSyntax, Binding->AuthInfo, Binding->QOS);
-    if (NewConnection) {
-      *Connection = NewConnection;
-      return RPC_S_OK;
-    }
+     return RpcAssoc_GetClientConnection(Binding->Assoc, InterfaceId,
+         TransferSyntax, Binding->AuthInfo, Binding->QOS, Connection);
   } else {
     /* we already have a connection with acceptable binding, so use it */
     if (Binding->FromConn) {
       *Connection = Binding->FromConn;
       return RPC_S_OK;
+    } else {
+       ERR("no connection in binding\n");
+       return RPC_S_INTERNAL_ERROR;
     }
   }
-  
-  /* create a new connection */
-  status = RPCRT4_CreateConnection(&NewConnection, Binding->server,
-                                   Binding->Protseq, Binding->NetworkAddr,
-                                   Binding->Endpoint, Binding->NetworkOptions,
-                                   Binding->AuthInfo, Binding->QOS, Binding);
-  if (status != RPC_S_OK)
-    return status;
-
-  status = RPCRT4_OpenClientConnection(NewConnection);
-  if (status != RPC_S_OK)
-  {
-    RPCRT4_DestroyConnection(NewConnection);
-    return status;
-  }
- 
-  /* we need to send a binding packet if we are client. */
-  if (!NewConnection->server) {
-    RpcPktHdr *hdr;
-    RpcPktHdr *response_hdr;
-    RPC_MESSAGE msg;
-
-    TRACE("sending bind request to server\n");
-
-    hdr = RPCRT4_BuildBindHeader(NDR_LOCAL_DATA_REPRESENTATION,
-                                 RPC_MAX_PACKET_SIZE, RPC_MAX_PACKET_SIZE,
-                                 InterfaceId, TransferSyntax);
-
-    status = RPCRT4_Send(NewConnection, hdr, NULL, 0);
-    RPCRT4_FreeHeader(hdr);
-    if (status != RPC_S_OK) {
-      RPCRT4_DestroyConnection(NewConnection);
-      return status;
-    }
-
-    status = RPCRT4_Receive(NewConnection, &response_hdr, &msg);
-    if (status != RPC_S_OK) {
-      ERR("receive failed\n");
-      RPCRT4_DestroyConnection(NewConnection);
-      return status;
-    }
-
-    if (response_hdr->common.ptype != PKT_BIND_ACK ||
-        response_hdr->bind_ack.max_tsize < RPC_MIN_PACKET_SIZE) {
-      ERR("failed to bind for interface %s, %d.%d\n",
-        debugstr_guid(&InterfaceId->SyntaxGUID),
-        InterfaceId->SyntaxVersion.MajorVersion,
-        InterfaceId->SyntaxVersion.MinorVersion);
-      RPCRT4_FreeHeader(response_hdr);
-      RPCRT4_DestroyConnection(NewConnection);
-      return RPC_S_PROTOCOL_ERROR;
-    }
-
-    /* FIXME: do more checks? */
-
-    NewConnection->MaxTransmissionSize = response_hdr->bind_ack.max_tsize;
-    NewConnection->ActiveInterface = *InterfaceId;
-    RPCRT4_FreeHeader(response_hdr);
-  }
-
-  if (Binding->server)
-    Binding->FromConn = NewConnection;
-  *Connection = NewConnection;
-
-  return RPC_S_OK;
 }
 
 RPC_STATUS RPCRT4_CloseBinding(RpcBinding* Binding, RpcConnection* Connection)
@@ -966,9 +907,24 @@ RPC_STATUS WINAPI RpcRevertToSelfEx(RPC_BINDING_HANDLE BindingHandle)
     return RPC_S_OK;
 }
 
+static inline BOOL has_nt_auth_identity(ULONG AuthnLevel)
+{
+    switch (AuthnLevel)
+    {
+    case RPC_C_AUTHN_GSS_NEGOTIATE:
+    case RPC_C_AUTHN_WINNT:
+    case RPC_C_AUTHN_GSS_KERBEROS:
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
 static RPC_STATUS RpcAuthInfo_Create(ULONG AuthnLevel, ULONG AuthnSvc,
                                      CredHandle cred, TimeStamp exp,
-                                     ULONG cbMaxToken, RpcAuthInfo **ret)
+                                     ULONG cbMaxToken,
+                                     RPC_AUTH_IDENTITY_HANDLE identity,
+                                     RpcAuthInfo **ret)
 {
     RpcAuthInfo *AuthInfo = HeapAlloc(GetProcessHeap(), 0, sizeof(*AuthInfo));
     if (!AuthInfo)
@@ -980,6 +936,51 @@ static RPC_STATUS RpcAuthInfo_Create(ULONG AuthnLevel, ULONG AuthnSvc,
     AuthInfo->cred = cred;
     AuthInfo->exp = exp;
     AuthInfo->cbMaxToken = cbMaxToken;
+    AuthInfo->identity = identity;
+
+    /* duplicate the SEC_WINNT_AUTH_IDENTITY structure, if applicable, to
+     * enable better matching in RpcAuthInfo_IsEqual */
+    if (identity && has_nt_auth_identity(AuthnSvc))
+    {
+        const SEC_WINNT_AUTH_IDENTITY_W *nt_identity = identity;
+        AuthInfo->nt_identity = HeapAlloc(GetProcessHeap(), 0, sizeof(*AuthInfo->nt_identity));
+        if (!AuthInfo->nt_identity)
+        {
+            HeapFree(GetProcessHeap(), 0, AuthInfo);
+            return ERROR_OUTOFMEMORY;
+        }
+
+        AuthInfo->nt_identity->Flags = SEC_WINNT_AUTH_IDENTITY_UNICODE;
+        if (nt_identity->Flags & SEC_WINNT_AUTH_IDENTITY_UNICODE)
+            AuthInfo->nt_identity->User = RPCRT4_strndupW(nt_identity->User, nt_identity->UserLength);
+        else
+            AuthInfo->nt_identity->User = RPCRT4_strndupAtoW((const char *)nt_identity->User, nt_identity->UserLength);
+        AuthInfo->nt_identity->UserLength = nt_identity->UserLength;
+        if (nt_identity->Flags & SEC_WINNT_AUTH_IDENTITY_UNICODE)
+            AuthInfo->nt_identity->Domain = RPCRT4_strndupW(nt_identity->Domain, nt_identity->DomainLength);
+        else
+            AuthInfo->nt_identity->Domain = RPCRT4_strndupAtoW((const char *)nt_identity->Domain, nt_identity->DomainLength);
+        AuthInfo->nt_identity->DomainLength = nt_identity->DomainLength;
+        if (nt_identity->Flags & SEC_WINNT_AUTH_IDENTITY_UNICODE)
+            AuthInfo->nt_identity->Password = RPCRT4_strndupW(nt_identity->Password, nt_identity->PasswordLength);
+        else
+            AuthInfo->nt_identity->Password = RPCRT4_strndupAtoW((const char *)nt_identity->Password, nt_identity->PasswordLength);
+        AuthInfo->nt_identity->PasswordLength = nt_identity->PasswordLength;
+
+        if (!AuthInfo->nt_identity->User ||
+            !AuthInfo->nt_identity->Domain ||
+            !AuthInfo->nt_identity->Password)
+        {
+            HeapFree(GetProcessHeap(), 0, AuthInfo->nt_identity->User);
+            HeapFree(GetProcessHeap(), 0, AuthInfo->nt_identity->Domain);
+            HeapFree(GetProcessHeap(), 0, AuthInfo->nt_identity->Password);
+            HeapFree(GetProcessHeap(), 0, AuthInfo->nt_identity);
+            HeapFree(GetProcessHeap(), 0, AuthInfo);
+            return ERROR_OUTOFMEMORY;
+        }
+    }
+    else
+        AuthInfo->nt_identity = NULL;
     *ret = AuthInfo;
     return RPC_S_OK;
 }
@@ -996,10 +997,58 @@ ULONG RpcAuthInfo_Release(RpcAuthInfo *AuthInfo)
     if (!refs)
     {
         FreeCredentialsHandle(&AuthInfo->cred);
+        if (AuthInfo->nt_identity)
+        {
+            HeapFree(GetProcessHeap(), 0, AuthInfo->nt_identity->User);
+            HeapFree(GetProcessHeap(), 0, AuthInfo->nt_identity->Domain);
+            HeapFree(GetProcessHeap(), 0, AuthInfo->nt_identity->User);
+            HeapFree(GetProcessHeap(), 0, AuthInfo->nt_identity);
+        }
         HeapFree(GetProcessHeap(), 0, AuthInfo);
     }
 
     return refs;
+}
+
+BOOL RpcAuthInfo_IsEqual(const RpcAuthInfo *AuthInfo1, const RpcAuthInfo *AuthInfo2)
+{
+    if (AuthInfo1 == AuthInfo2)
+        return TRUE;
+
+    if (!AuthInfo1 || !AuthInfo2)
+        return FALSE;
+
+    if ((AuthInfo1->AuthnLevel != AuthInfo2->AuthnLevel) ||
+        (AuthInfo1->AuthnSvc != AuthInfo2->AuthnSvc))
+        return FALSE;
+
+    if (AuthInfo1->identity == AuthInfo2->identity)
+        return TRUE;
+
+    if (!AuthInfo1->identity || !AuthInfo2->identity)
+        return FALSE;
+
+    if (has_nt_auth_identity(AuthInfo1->AuthnSvc))
+    {
+        const SEC_WINNT_AUTH_IDENTITY_W *identity1 = AuthInfo1->nt_identity;
+        const SEC_WINNT_AUTH_IDENTITY_W *identity2 = AuthInfo2->nt_identity;
+        /* compare user names */
+        if (identity1->UserLength != identity2->UserLength ||
+            memcmp(identity1->User, identity2->User, identity1->UserLength))
+            return FALSE;
+        /* compare domain names */
+        if (identity1->DomainLength != identity2->DomainLength ||
+            memcmp(identity1->Domain, identity2->Domain, identity1->DomainLength))
+            return FALSE;
+        /* compare passwords */
+        if (identity1->PasswordLength != identity2->PasswordLength ||
+            memcmp(identity1->Password, identity2->Password, identity1->PasswordLength))
+            return FALSE;
+    }
+    else
+        return FALSE;
+
+    return TRUE;
 }
 
 static RPC_STATUS RpcQualityOfService_Create(const RPC_SECURITY_QOS *qos_src, BOOL unicode, RpcQualityOfService **qos_dst)
@@ -1140,6 +1189,65 @@ ULONG RpcQualityOfService_Release(RpcQualityOfService *qos)
         HeapFree(GetProcessHeap(), 0, qos);
     }
     return refs;
+}
+
+BOOL RpcQualityOfService_IsEqual(const RpcQualityOfService *qos1, const RpcQualityOfService *qos2)
+{
+    if (qos1 == qos2)
+        return TRUE;
+
+    if (!qos1 || !qos2)
+        return FALSE;
+
+    TRACE("qos1 = { %ld %ld %ld %ld }, qos2 = { %ld %ld %ld %ld }\n",
+        qos1->qos->Capabilities, qos1->qos->IdentityTracking,
+        qos1->qos->ImpersonationType, qos1->qos->AdditionalSecurityInfoType,
+        qos2->qos->Capabilities, qos2->qos->IdentityTracking,
+        qos2->qos->ImpersonationType, qos2->qos->AdditionalSecurityInfoType);
+
+    if ((qos1->qos->Capabilities != qos2->qos->Capabilities) ||
+        (qos1->qos->IdentityTracking != qos2->qos->IdentityTracking) ||
+        (qos1->qos->ImpersonationType != qos2->qos->ImpersonationType) ||
+        (qos1->qos->AdditionalSecurityInfoType != qos2->qos->AdditionalSecurityInfoType))
+        return FALSE;
+
+    if (qos1->qos->AdditionalSecurityInfoType == RPC_C_AUTHN_INFO_TYPE_HTTP)
+    {
+        const RPC_HTTP_TRANSPORT_CREDENTIALS_W *http_credentials1 = qos1->qos->u.HttpCredentials;
+        const RPC_HTTP_TRANSPORT_CREDENTIALS_W *http_credentials2 = qos2->qos->u.HttpCredentials;
+
+        if (http_credentials1->Flags != http_credentials2->Flags)
+            return FALSE;
+
+        if (http_credentials1->AuthenticationTarget != http_credentials2->AuthenticationTarget)
+            return FALSE;
+
+        /* authentication schemes and server certificate subject not currently used */
+
+        if (http_credentials1->TransportCredentials != http_credentials2->TransportCredentials)
+        {
+            const SEC_WINNT_AUTH_IDENTITY_W *identity1 = http_credentials1->TransportCredentials;
+            const SEC_WINNT_AUTH_IDENTITY_W *identity2 = http_credentials2->TransportCredentials;
+
+            if (!identity1 || !identity2)
+                return FALSE;
+
+            /* compare user names */
+            if (identity1->UserLength != identity2->UserLength ||
+                memcmp(identity1->User, identity2->User, identity1->UserLength))
+                return FALSE;
+            /* compare domain names */
+            if (identity1->DomainLength != identity2->DomainLength ||
+                memcmp(identity1->Domain, identity2->Domain, identity1->DomainLength))
+                return FALSE;
+            /* compare passwords */
+            if (identity1->PasswordLength != identity2->PasswordLength ||
+                memcmp(identity1->Password, identity2->Password, identity1->PasswordLength))
+                return FALSE;
+        }
+    }
+
+    return TRUE;
 }
 
 /***********************************************************************
@@ -1316,7 +1424,7 @@ RpcBindingSetAuthInfoExA( RPC_BINDING_HANDLE Binding, RPC_CSTR ServerPrincName,
     if (bind->AuthInfo) RpcAuthInfo_Release(bind->AuthInfo);
     bind->AuthInfo = NULL;
     r = RpcAuthInfo_Create(AuthnLevel, AuthnSvc, cred, exp, cbMaxToken,
-                           &bind->AuthInfo);
+                           AuthIdentity, &bind->AuthInfo);
     if (r != RPC_S_OK)
       FreeCredentialsHandle(&cred);
     return RPC_S_OK;
@@ -1432,7 +1540,7 @@ RpcBindingSetAuthInfoExW( RPC_BINDING_HANDLE Binding, RPC_WSTR ServerPrincName, 
     if (bind->AuthInfo) RpcAuthInfo_Release(bind->AuthInfo);
     bind->AuthInfo = NULL;
     r = RpcAuthInfo_Create(AuthnLevel, AuthnSvc, cred, exp, cbMaxToken,
-                           &bind->AuthInfo);
+                           AuthIdentity, &bind->AuthInfo);
     if (r != RPC_S_OK)
       FreeCredentialsHandle(&cred);
     return RPC_S_OK;
